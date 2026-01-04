@@ -1,6 +1,14 @@
 # For PCBs designed using KiCad: https://www.kicad.org/
 # Format documentation: https://kicad.org/help/file-formats/
 
+# Custom
+*.zip
+*.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
 # Temporary files
 *.000
 *.bak
