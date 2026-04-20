@@ -22,11 +22,7 @@ void setup() {
   analogWrite(PIN_FS_ADJUST, 128);
 
   dds = new AD9834(PIN_FSYNC, MCLK_HZ);
-
-  while(true) {
-    dds->update_freq(OUT_FREQ_HZ);
-    delay(100);
-  }
+  dds->update_freq(OUT_FREQ_HZ);
 }
 
 void loop() {}

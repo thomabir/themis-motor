@@ -28,7 +28,11 @@ Secondary goal (optional): Have a minimal "sender" circuit for the encoder, test
   - The big unknown: Can it modulate quickly and with low noise?
   - Does the differential output work as expected?
   - How to program it? Will figure out once I get it
-- Clock: Active crystal oscillator at 50 MHz
+- Clock: Active crystal oscillator at 75 MHz
 - Diff-amp to drive encoder: AD8390
   - Lots of power, cheap, fast
   - Unknown: Made for ADSL, let's see if this works well in this application? Spec wise, it should work.
+
+## How to run
+
+Upload code to Teensy: `~/.platformio/penv/bin/pio run -e teensy41 -t upload`

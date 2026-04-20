@@ -2,6 +2,8 @@
 
 ## 2026-06-20
 
+### Getting 1 MHz DDS output
+
 - Measured clock: 75 MHz, ≈ 3 Vpp (not great probing, so amplitude not certain)
   - Problem: This is a discrepency with schematic, which says 50 MHz. Not a big issue
   - BOM part number is a 75 MHz part, so the procurement was correct. Updating schematic.
@@ -29,9 +31,6 @@
 - ICs are not getting warm. Lab PSU shows < 10 mA on analog rails. No current measurement on digital rails unfortunately. Switching Lab PSU to get that as well.
 - Digital rail draws 13 mA, probably not a short.
 - Next: Checking SPI
-- Notes for next board
-  - make connectors quick-disconnectable (use the plug-in type screw terminals instead of regular ones)
-  - Break more pins for easy testing
 
 - From AD9834 datasheet:
   "SIGN BIT OUT PIN
@@ -63,6 +62,31 @@
 - Power consumption just changed: 17 mA digital.
 - DDS+ and DDS- show a clean 1 MHz signal!
 - That fixed it, floating reset pin was the culprit.
+
+### Testing amplifier function
+
+- I get a clean 1 MHz signal between the AMP+ and AMP- pins
+  - 10.45 Vpp, 3.67 Vrms
+- Good output at output terminals (after resonant capacitor)
+  - 10.35 Vpp, 3.64 Vrms
+
+### Testing modulation via FS_ADJUST
+
+- Signals from PWM + low-pass appear quite noisy. Push PWM freq. as fast as possible.
+
+### Notes for the future
+
+- What worked well
+  - Power section: flawless so far
+  - Having lots of GND testpoints, very convenient
+  - Breaking out many signals as testpoints - makes probing easier, but also soldering in other components like R_SET
+
+- What to improve
+  - make connectors (power, data) quick-disconnectable (use the plug-in type screw terminals instead of regular ones)
+  - Break out more pins for easy testing, especially for unknown ICs
+  - Leave some footprints to be able to set up ICs with "default" components, in case my config does not work, and mark as DNP
+  - Cross-check BOM with schematic (50 vs 75 MHz clock)
+  - Don't leave the reset pin floating
 
 ## 2026-04-18
 
