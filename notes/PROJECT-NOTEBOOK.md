@@ -1,5 +1,69 @@
 # Themis Project Notebook
 
+## 2026-06-20
+
+- Measured clock: 75 MHz, ≈ 3 Vpp (not great probing, so amplitude not certain)
+  - Problem: This is a discrepency with schematic, which says 50 MHz. Not a big issue
+  - BOM part number is a 75 MHz part, so the procurement was correct. Updating schematic.
+  - Changed MCLK_HZ in code to 75 MHz
+- Measuring SIGNOUT pin
+  - 8.7 MHz 3.3V clock, distorted probably from bad probing
+  - After configuring for 1 MHz with Teensy: Still 8.7 MHz.
+  - This is not as expected, something's wrong. Should be 1 MHz
+- Soldered 6.8 kΩ resistor between FSADJUST and GND.
+- Clock still as before
+- SIGNOUT now no output, both before and after config from uC.
+- Did the part die?
+- Prepared second board, also soldered in 6.8 kΩ resistor between FS_ADJUST and GND
+  - Clock good
+  - no SIGNOUT output before teensy config
+  - no SIGNOUT output after teensy config
+- Removng 6.8 kΩ resistor again
+  - clock still good
+  - still no SIGNOUT output
+- What happened here? Did both boards die from soldering in a resistor?
+
+- Desoldered 6.8 kΩ again on one of the boards. I broke out these pins on the PCB, so the resistor has big pads and is nowhere near the IC. No bridges possible here
+- Inspected both boards under microscope. No problems visible. Some crud from probing the SIGNOUT pin at the IC (forgot to break that one out), but no bridging. Cleaned up a bit anyway with small scaper.
+  - Next board iteration: break out SIGNOUT pin
+- ICs are not getting warm. Lab PSU shows < 10 mA on analog rails. No current measurement on digital rails unfortunately. Switching Lab PSU to get that as well.
+- Digital rail draws 13 mA, probably not a short.
+- Next: Checking SPI
+- Notes for next board
+  - make connectors quick-disconnectable (use the plug-in type screw terminals instead of regular ones)
+  - Break more pins for easy testing
+
+- From AD9834 datasheet:
+  "SIGN BIT OUT PIN
+  The AD9834 offers a variety of outputs from the chip. The digital outputs are available from the SIGN BIT OUT pin. The available outputs are the comparator output or the MSB of the DAC data. The bits controlling the SIGN BIT OUT pin are outlined in Table 17.
+  This pin must be enabled before use. The enabling/disabling of this pin is controlled by the Bit OPBITEN (DB5) in the control register. When OPBITEN = 1, this pin is enabled. Note that the MODE bit (DB1) in the control register should be set to 0 if OPBITEN = 1."
+- It appears what I measured before (8.7 MHz SIGNOUT) may have been some parasitic coupling.
+
+- Scoping SPI signals with AD3 now to see if they are as expected.
+- Not stable, very noisy, one capture:
+  `h4101 h1907 h01B5 h1971`
+  SCLK freq ≈ 10 MHz
+- Weird, I've used 10 MHz SPI over jumpers in the past, no problem.
+- SPI clock slowed down to 1 MHz
+  - still garbled data, changes on every transmission
+  - Disconnected DUT now - just probing SPI from teensy directly.
+  - That clock frequency is not a problem now - 1 MHz is very slow
+- Found a problem: was probing SPI wrong. In AD9834 datasheet: "SCK idles high between write operations (CPOL = 0), Data is valid on the SCK falling edge (CPHA = 1). notFSYNC (active low) frames each 16-bit transfer individually."
+- When I set the logic analyzer up for that, it's a bit more stable:
+  ```
+  b0010000000000000
+  bXX01110100000011
+  bXX00000011011010
+  b0000X00000111000
+  ```
+  (X means unstable, jumping around)
+
+- Just realized: RESET pin was floating the entire time. Setting it now and reuploading code.
+- SIGNOUT is alive! 9.7 MHz 3.3V
+- Power consumption just changed: 17 mA digital.
+- DDS+ and DDS- show a clean 1 MHz signal!
+- That fixed it, floating reset pin was the culprit.
+
 ## 2026-04-18
 
 TC1 testings
@@ -9,6 +73,11 @@ TC1 testings
   [X] -12 V (less than 10 mA idle)
   [X] +3.3 V
 
+Should have broken out the SIGNBIT pin from the AD9834 for proof-of-life, since there is no SDO.
+
+Currently, using datasheet-suggested 6.8 kΩ resistor from FSADJUST to GND instead of PWM.
+
+Setting up for 1 MHz sine wave. Output not good. See spikes at 1 MHz, but a lot of noise. Not a sine wave.
 
 ## 2026-04-17
 

@@ -3432,7 +3432,7 @@
 		)
 		(uuid "5b919b12-df94-4ef5-9375-dd111afa8365")
 	)
-	(text "50 MHz"
+	(text "75 MHz"
 		(exclude_from_sim no)
 		(at 106.68 260.985 0)
 		(effects

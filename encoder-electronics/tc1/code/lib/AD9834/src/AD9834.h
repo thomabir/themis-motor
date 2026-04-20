@@ -1,0 +1,34 @@
+#pragma once
+
+#include <SPI.h>
+
+class AD9834 {
+ public:
+  AD9834(int fsync_pin, long clock_freq = 75000000)
+      : _FSYNC_PIN(fsync_pin),
+        _clock_freq(clock_freq),
+        _spi_settings(100000, MSBFIRST, SPI_MODE2),
+        _use_freq_reg_1(false),
+        _last_freq() {
+    SPI.begin();
+    pinMode(_FSYNC_PIN, OUTPUT);
+    digitalWriteFast(_FSYNC_PIN, HIGH);
+    // Reset
+    _transfer16(0x100);
+  };
+
+  // Updates the frequency register directly - this writes to the 'other'
+  // frequency control register than the one in use, then switches the DDS over
+  // to it.
+  void update_freq_reg(uint16_t MSB, uint16_t LSB);
+  void update_freq(float freq);
+  long get_freq() { return _last_freq; };
+
+ private:
+  const int _FSYNC_PIN;
+  const long _clock_freq;
+  SPISettings _spi_settings;
+  bool _use_freq_reg_1;
+  long _last_freq;
+  void _transfer16(uint16_t data);
+};
