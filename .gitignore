@@ -4,6 +4,7 @@
 # Custom
 *.zip
 *.DS_Store
+.claude/
 
 # Python
 __pycache__/
