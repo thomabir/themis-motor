@@ -8,11 +8,23 @@ static constexpr int   PIN_FS_ADJUST = 6;
 static constexpr int   PIN_RESET     = 9;
 static constexpr int   PIN_FSYNC     = 10;
 static constexpr long  MCLK_HZ      = 75000000L;
-static constexpr float FREQ_MIN_HZ  = 1.0f;
-static constexpr float FREQ_MAX_HZ  = MCLK_HZ / 2.0f;
+static constexpr float   FREQ_MIN_HZ  = 1.0f;
+static constexpr float   FREQ_MAX_HZ  = MCLK_HZ / 2.0f;
 
-static float   g_freq = 1e6f;
-static uint8_t g_amp  = 128;
+// FS_ADJUST is current-sink: raw=0 → max output amplitude, raw=230 → min output amplitude.
+static constexpr uint8_t AMP_RAW_AT_MAX_OUTPUT = 0;
+static constexpr uint8_t AMP_RAW_AT_MIN_OUTPUT = 230;
+
+static float   g_freq   = 1e6f;
+static uint8_t g_amp    = 128;
+static int     g_amp_ac = -1; // last corrected amplitude command; -1 if unused
+
+// Maps corrected amplitude [0, 100] to raw PWM: ac=0 → AMP_RAW_AT_MIN_OUTPUT, ac=100 → AMP_RAW_AT_MAX_OUTPUT.
+// Span is negative because FS_ADJUST sink current is inversely proportional to output amplitude.
+static uint8_t amp_ac_to_raw(int ac) {
+  const int span = int(AMP_RAW_AT_MAX_OUTPUT) - int(AMP_RAW_AT_MIN_OUTPUT);
+  return static_cast<uint8_t>(int(AMP_RAW_AT_MIN_OUTPUT) + span * ac / 100);
+}
 
 static AD9834 dds;
 
@@ -25,8 +37,12 @@ static const char* mode_name(DdsMode m) {
 }
 
 static void print_state() {
-  Serial.printf("freq=%.0f Hz  amp=%d  mode=%s\n",
-                g_freq, g_amp, mode_name(dds.get_mode()));
+  if (g_amp_ac >= 0)
+    Serial.printf("freq=%.0f Hz  amp=%d  ac=%d  mode=%s\n",
+                  g_freq, g_amp, g_amp_ac, mode_name(dds.get_mode()));
+  else
+    Serial.printf("freq=%.0f Hz  amp=%d  mode=%s\n",
+                  g_freq, g_amp, mode_name(dds.get_mode()));
 }
 
 static void handle(const char* line) {
@@ -52,7 +68,26 @@ static void handle(const char* line) {
     dds.update_freq(g_freq);
     print_state();
 
-  } else if (cmd == 'a') {
+  } else if (cmd == 'a' && tolower((unsigned char)arg[0]) == 'c') {
+    // "ac <0-100>": corrected amplitude (0 = min output, 100 = max output)
+    const char* ac_arg = arg + 1;
+    while (*ac_arg == ' ' || *ac_arg == '\t') ++ac_arg;
+    char* end;
+    long val = strtol(ac_arg, &end, 10);
+    if (end == ac_arg) {
+      Serial.println("Error: expected a number after 'ac'");
+      return;
+    }
+    if (val < 0 || val > 100) {
+      Serial.println("Error: corrected amplitude must be 0–100");
+      return;
+    }
+    g_amp_ac = (int)val;
+    g_amp    = amp_ac_to_raw(g_amp_ac);
+    analogWrite(PIN_FS_ADJUST, g_amp);
+    print_state();
+
+  } else if (cmd == 'a') { // must come after all 'a?' two-character commands above
     char* end;
     long val = strtol(arg, &end, 10);
     if (end == arg) {
@@ -63,7 +98,8 @@ static void handle(const char* line) {
       Serial.println("Error: amplitude must be 0–255");
       return;
     }
-    g_amp = (uint8_t)val;
+    g_amp    = (uint8_t)val;
+    g_amp_ac = -1;
     analogWrite(PIN_FS_ADJUST, g_amp);
     print_state();
 
@@ -87,7 +123,7 @@ static void handle(const char* line) {
     print_state();
 
   } else {
-    Serial.println("Commands: f <Hz>  a <0-255>  m <sine|tri|square>");
+    Serial.println("Commands: f <Hz>  a <0-255>  ac <0-100>  m <sine|tri|square>");
   }
 }
 
@@ -107,7 +143,7 @@ void setup() {
   dds.begin(PIN_FSYNC, MCLK_HZ);
   dds.update_freq(g_freq);
 
-  Serial.println("Commands: f <Hz>  a <0-255>  m <sine|tri|square>");
+  Serial.println("Commands: f <Hz>  a <0-255>  ac <0-100>  m <sine|tri|square>");
   print_state();
 }
 
