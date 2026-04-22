@@ -3,129 +3,26 @@
 
 #include <Arduino.h>
 #include "AD9834.h"
+#include "cmd_parser.hpp"
 
 static constexpr int   PIN_FS_ADJUST = 6;
 static constexpr int   PIN_RESET     = 9;
 static constexpr int   PIN_FSYNC     = 10;
 static constexpr long  MCLK_HZ      = 75000000L;
-static constexpr float   FREQ_MIN_HZ  = 1.0f;
-static constexpr float   FREQ_MAX_HZ  = MCLK_HZ / 2.0f;
 
 // FS_ADJUST is current-sink: raw=0 → max output amplitude, raw=230 → min output amplitude.
 static constexpr uint8_t AMP_RAW_AT_MAX_OUTPUT = 0;
 static constexpr uint8_t AMP_RAW_AT_MIN_OUTPUT = 230;
 
-static float   g_freq   = 1e6f;
-static uint8_t g_amp    = 128;
-static int     g_amp_ac = -1; // last corrected amplitude command; -1 if unused
-
-// Maps corrected amplitude [0, 100] to raw PWM: ac=0 → AMP_RAW_AT_MIN_OUTPUT, ac=100 → AMP_RAW_AT_MAX_OUTPUT.
-// Span is negative because FS_ADJUST sink current is inversely proportional to output amplitude.
-static uint8_t amp_ac_to_raw(int ac) {
-  const int span = int(AMP_RAW_AT_MAX_OUTPUT) - int(AMP_RAW_AT_MIN_OUTPUT);
-  return static_cast<uint8_t>(int(AMP_RAW_AT_MIN_OUTPUT) + span * ac / 100);
-}
-
-static AD9834 dds;
-
-static const char* mode_name(DdsMode m) {
-  switch (m) {
-    case DdsMode::Triangle: return "tri";
-    case DdsMode::Square:   return "square";
-    default:                return "sine";
-  }
-}
-
-static void print_state() {
-  if (g_amp_ac >= 0)
-    Serial.printf("freq=%.0f Hz  amp=%d  ac=%d  mode=%s\n",
-                  g_freq, g_amp, g_amp_ac, mode_name(dds.get_mode()));
-  else
-    Serial.printf("freq=%.0f Hz  amp=%d  mode=%s\n",
-                  g_freq, g_amp, mode_name(dds.get_mode()));
-}
-
-static void handle(const char* line) {
-  while (*line == ' ' || *line == '\t') ++line;
-  if (*line == '\0') return;
-
-  char cmd = tolower((unsigned char)*line);
-  const char* arg = line + 1;
-  while (*arg == ' ' || *arg == '\t') ++arg;
-
-  if (cmd == 'f') {
-    char* end;
-    float val = strtof(arg, &end);
-    if (end == arg) {
-      Serial.println("Error: expected a number after 'f'");
-      return;
-    }
-    if (val < FREQ_MIN_HZ || val > FREQ_MAX_HZ) {
-      Serial.printf("Error: frequency must be %.0f–%.0f Hz\n", FREQ_MIN_HZ, FREQ_MAX_HZ);
-      return;
-    }
-    g_freq = val;
-    dds.update_freq(g_freq);
-    print_state();
-
-  } else if (cmd == 'a' && tolower((unsigned char)arg[0]) == 'c') {
-    // "ac <0-100>": corrected amplitude (0 = min output, 100 = max output)
-    const char* ac_arg = arg + 1;
-    while (*ac_arg == ' ' || *ac_arg == '\t') ++ac_arg;
-    char* end;
-    long val = strtol(ac_arg, &end, 10);
-    if (end == ac_arg) {
-      Serial.println("Error: expected a number after 'ac'");
-      return;
-    }
-    if (val < 0 || val > 100) {
-      Serial.println("Error: corrected amplitude must be 0–100");
-      return;
-    }
-    g_amp_ac = (int)val;
-    g_amp    = amp_ac_to_raw(g_amp_ac);
-    analogWrite(PIN_FS_ADJUST, g_amp);
-    print_state();
-
-  } else if (cmd == 'a') { // must come after all 'a?' two-character commands above
-    char* end;
-    long val = strtol(arg, &end, 10);
-    if (end == arg) {
-      Serial.println("Error: expected a number after 'a'");
-      return;
-    }
-    if (val < 0 || val > 255) {
-      Serial.println("Error: amplitude must be 0–255");
-      return;
-    }
-    g_amp    = (uint8_t)val;
-    g_amp_ac = -1;
-    analogWrite(PIN_FS_ADJUST, g_amp);
-    print_state();
-
-  } else if (cmd == 'm') {
-    char arg_lower[16] = {};
-    for (size_t i = 0; i < sizeof(arg_lower) - 1 && arg[i]; ++i)
-      arg_lower[i] = tolower((unsigned char)arg[i]);
-
-    DdsMode mode;
-    if (strcmp(arg_lower, "sine") == 0) {
-      mode = DdsMode::Sine;
-    } else if (strcmp(arg_lower, "tri") == 0) {
-      mode = DdsMode::Triangle;
-    } else if (strcmp(arg_lower, "square") == 0) {
-      mode = DdsMode::Square;
-    } else {
-      Serial.println("Error: mode must be sine, tri, or square");
-      return;
-    }
-    dds.update_mode(mode);
-    print_state();
-
-  } else {
-    Serial.println("Commands: f <Hz>  a <0-255>  ac <0-100>  m <sine|tri|square>");
-  }
-}
+static AD9834    dds;
+static CmdParser parser(
+  /*freq_init*/            1e6f,
+  /*amp_init*/             128,
+  /*freq_min*/             1.0f,
+  /*freq_max*/             MCLK_HZ / 2.0f,
+  /*amp_raw_at_max_output*/AMP_RAW_AT_MAX_OUTPUT,
+  /*amp_raw_at_min_output*/AMP_RAW_AT_MIN_OUTPUT
+);
 
 void setup() {
   Serial.begin(115200);
@@ -138,13 +35,13 @@ void setup() {
 
   analogWriteFrequency(PIN_FS_ADJUST, 1000000); // 1 MHz: above LPF corner, clean DC bias
   analogWriteResolution(8);
-  analogWrite(PIN_FS_ADJUST, g_amp);
+  analogWrite(PIN_FS_ADJUST, parser.amp);
 
   dds.begin(PIN_FSYNC, MCLK_HZ);
-  dds.update_freq(g_freq);
+  dds.update_freq(parser.freq);
 
-  Serial.println("Commands: f <Hz>  a <0-255>  ac <0-100>  m <sine|tri|square>");
-  print_state();
+  CmdParser::print_help();
+  parser.print_state(dds);
 }
 
 void loop() {
@@ -156,7 +53,7 @@ void loop() {
     if (c == '\n' || c == '\r') {
       if (pos > 0) {
         buf[pos] = '\0';
-        handle(buf);
+        parser.handle(buf, dds, PIN_FS_ADJUST);
         pos = 0;
       }
     } else if (pos < sizeof(buf) - 1) {
